@@ -407,8 +407,8 @@ function alwaysExits(stmt) {
 }
 
 // src/project/loader.ts
-import { existsSync as existsSync2, readdirSync, readFileSync as readFileSync2, statSync } from "node:fs";
-import { basename, dirname, join as join2, relative, sep } from "node:path";
+import { existsSync as existsSync2, lstatSync, readdirSync, readFileSync as readFileSync2, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join as join2, normalize, relative, sep } from "node:path";
 
 // src/parser/lexer.ts
 var PUNCTUATORS = [
@@ -1961,10 +1961,15 @@ function emptyProject(name, rootRel, rootAbs) {
 }
 function readText(abs) {
   try {
+    if (lstatSync(abs).isSymbolicLink()) return void 0;
     return readFileSync2(abs, "utf8");
   } catch {
     return void 0;
   }
+}
+function isContainedPath(p) {
+  if (isAbsolute(p) || /^[a-zA-Z]:/.test(p) || p.startsWith("\\")) return false;
+  return !normalize(p).split(/[\\/]/).includes("..");
 }
 function listDirs(abs) {
   try {
@@ -2006,10 +2011,12 @@ function loadProject(wsRoot, yypAbs, isIgnored) {
     }
     return info;
   };
+  const uncontained = /* @__PURE__ */ new Set();
   for (const entry of project.yyp.entries) {
     const info = addResource(entry.name, entry.path.split("/")[0], entry.path);
     info.inYyp = true;
     info.yypEntries.push(entry);
+    if (!isContainedPath(entry.path)) uncontained.add(info);
   }
   for (const type of RESOURCE_DIRS) {
     const typeDir = join2(rootAbs, type);
@@ -2018,7 +2025,7 @@ function loadProject(wsRoot, yypAbs, isIgnored) {
     }
   }
   for (const list of project.resources.values()) {
-    for (const r of list) if (!r.onDisk && r.inYyp) r.onDisk = existsSync2(join2(wsRoot, r.yyRelPath));
+    for (const r of list) if (!r.onDisk && r.inYyp && !uncontained.has(r)) r.onDisk = existsSync2(join2(wsRoot, r.yyRelPath));
   }
   for (const dir of CODE_DIRS) {
     const typeDir = join2(rootAbs, dir);
@@ -8979,7 +8986,6 @@ var PROJECT_RULES = [
 ];
 
 // src/rules/security.ts
-import { readFileSync as readFileSync3 } from "node:fs";
 import { join as join3 } from "node:path";
 
 // src/analysis/taint.ts
@@ -9899,6 +9905,10 @@ var SECRET_PATTERNS = [
   { name: "credentials in URL", re: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@"']{1,64}:[^\s/:@"']{3,64}@[^\s/"']+/i }
 ];
 var PLACEHOLDER = /^(your|my|insert|enter|replace|change|put|todo|xxx|example|sample|dummy|test|placeholder|none|null|undefined|secret|password|token|api[_-]?key)[_\s-]?|^<.*>$|^\$\{.*\}$|^\*+$|^x+$|^(.)\1+$/i;
+function redactLine(line, secret) {
+  const masked = secret.length <= 8 ? "****" : `${secret.slice(0, 4)}****`;
+  return line.split(secret).join(masked).trim();
+}
 function entropy(s) {
   const counts = /* @__PURE__ */ new Map();
   for (const c of s) counts.set(c, (counts.get(c) ?? 0) + 1);
@@ -9957,15 +9967,17 @@ var hardcodedSecret = {
 4. Remove it from git history (\`git filter-repo\`), since deleting it in a new commit is not enough.`
   },
   file(ctx) {
+    const snippetFor = (node, secret) => ({ snippet: redactLine(ctx.file.source.lineText(ctx.locate(node).startLine), secret) });
     const check = (node, value) => {
       const pattern = matchSecret(value);
       if (pattern) {
-        ctx.report(node, `Hard-coded ${pattern.name} in game code; it ships inside the build where players can extract it. Revoke it and move it server-side.`);
+        const secret = pattern.re.exec(value)?.[0] ?? value;
+        ctx.report(node, `Hard-coded ${pattern.name} in game code; it ships inside the build where players can extract it. Revoke it and move it server-side.`, snippetFor(node, secret));
         return;
       }
       const name = assignedName(ctx.ancestors, node);
       if (name && isSensitiveName(name) && looksLikeSecretValue(value)) {
-        ctx.report(node, `${code(name)} is assigned what looks like a hard-coded secret; anything in GML ships inside the build where players can extract it.`);
+        ctx.report(node, `${code(name)} is assigned what looks like a hard-coded secret; anything in GML ships inside the build where players can extract it.`, snippetFor(node, value));
       }
     };
     return {
@@ -9975,7 +9987,7 @@ var hardcodedSecret = {
       },
       MacroDeclaration: (n) => {
         if (n.value?.type === "StringLiteral" && isSensitiveName(n.id.name) && looksLikeSecretValue(n.value.value) && !matchSecret(n.value.value)) {
-          ctx.report(n.value, `Macro ${code(n.id.name)} contains what looks like a hard-coded secret; macros are compiled into the build.`);
+          ctx.report(n.value, `Macro ${code(n.id.name)} contains what looks like a hard-coded secret; macros are compiled into the build.`, snippetFor(n.value, n.value.value));
         }
       }
     };
@@ -9986,12 +9998,8 @@ var hardcodedSecret = {
 };
 var KEY_VALUE = /["']?([A-Za-z0-9_.-]*?(?:pass(?:word|wd)?|pwd|secret|api[_-]?key|apikey|access[_-]?key|private[_-]?key|auth[_-]?token|token|client[_-]?secret|webhook)[A-Za-z0-9_.-]*)["']?\s*[:=]\s*["']?([^"'\s,}#]{16,})/gi;
 function scanTextFile(ctx, rel) {
-  let text;
-  try {
-    text = readFileSync3(join3(ctx.workspaceRoot, rel), "utf8");
-  } catch {
-    return;
-  }
+  const text = readText(join3(ctx.workspaceRoot, rel));
+  if (text === void 0) return;
   const source = new SourceText(text);
   const isWorkflow = /\.github\/workflows\//.test(rel);
   const inShipped = rel.includes("/datafiles/") || rel.startsWith("datafiles/");
@@ -9999,14 +10007,16 @@ function scanTextFile(ctx, rel) {
   for (const p of SECRET_PATTERNS) {
     const re = new RegExp(p.re.source, p.re.flags.includes("g") ? p.re.flags : p.re.flags + "g");
     for (const m of text.matchAll(re)) {
-      ctx.report(ctx.locateText(rel, source, { start: m.index, end: m.index + m[0].length }), `Hard-coded ${p.name} in ${where}. Revoke it and remove it from the repository history.`);
+      const loc = ctx.locateText(rel, source, { start: m.index, end: m.index + m[0].length });
+      ctx.report(loc, `Hard-coded ${p.name} in ${where}. Revoke it and remove it from the repository history.`, { snippet: redactLine(source.lineText(loc.startLine), m[0]) });
     }
   }
   for (const m of text.matchAll(KEY_VALUE)) {
     const [, key, value] = m;
     if (/public/i.test(key) || /\$\{\{/.test(m[0]) || !isSensitiveName(key) || !looksLikeSecretValue(value) || matchSecret(value)) continue;
     const start = m.index + m[0].lastIndexOf(value);
-    ctx.report(ctx.locateText(rel, source, { start, end: start + value.length }), `${code(key)} looks like a hard-coded secret in ${where}.`);
+    const loc = ctx.locateText(rel, source, { start, end: start + value.length });
+    ctx.report(loc, `${code(key)} looks like a hard-coded secret in ${where}.`, { snippet: redactLine(source.lineText(loc.startLine), value) });
   }
 }
 var HTTP_FUNCTIONS = { http_get: 0, http_get_file: 0, http_post_string: 0, http_request: 0, http_get_request_crossorigin: 0 };
@@ -10447,7 +10457,7 @@ function scan(options) {
       location,
       related: extras?.related,
       flow: extras?.flow,
-      snippet: source?.lineText(location.startLine).trim()
+      snippet: extras?.snippet ?? source?.lineText(location.startLine).trim()
     });
     for (const file of project.files) {
       runFileRules(file, index, config, selected, projectFindings, internalErrors, makeFinding);

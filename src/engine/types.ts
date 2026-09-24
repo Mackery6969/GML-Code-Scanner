@@ -74,6 +74,8 @@ export interface ReportExtras {
   related?: RelatedLocation[];
   flow?: FlowStep[];
   severity?: Severity;
+  /** Replaces the source line shown in reports (e.g. with a secret redacted). */
+  snippet?: string;
 }
 
 export interface Span {

@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type * as A from "../parser/ast.ts";
 import type { FlowStep, ProjectContext, Rule, RuleMeta } from "../engine/types.ts";
 import { analyzeTaint, type SinkKind, type Step, type TaintAnalysis } from "../analysis/taint.ts";
+import { readText } from "../project/loader.ts";
 import { SourceText } from "../project/source.ts";
 import { builtinCallName, code, isSensitiveName, staticPrefix } from "./util.ts";
 
@@ -215,6 +215,12 @@ const SECRET_PATTERNS: SecretPattern[] = [
 
 const PLACEHOLDER = /^(your|my|insert|enter|replace|change|put|todo|xxx|example|sample|dummy|test|placeholder|none|null|undefined|secret|password|token|api[_-]?key)[_\s-]?|^<.*>$|^\$\{.*\}$|^\*+$|^x+$|^(.)\1+$/i;
 
+/** The line with every occurrence of `secret` masked, so reports and CI logs don't repeat it. */
+export function redactLine(line: string, secret: string): string {
+  const masked = secret.length <= 8 ? "****" : `${secret.slice(0, 4)}****`;
+  return line.split(secret).join(masked).trim();
+}
+
 function entropy(s: string): number {
   const counts = new Map<string, number>();
   for (const c of s) counts.set(c, (counts.get(c) ?? 0) + 1);
@@ -278,15 +284,17 @@ export const hardcodedSecret: Rule = {
 4. Remove it from git history (\`git filter-repo\`), since deleting it in a new commit is not enough.`,
   },
   file(ctx) {
+    const snippetFor = (node: A.Node, secret: string) => ({ snippet: redactLine(ctx.file.source.lineText(ctx.locate(node).startLine), secret) });
     const check = (node: A.StringLiteral | A.TemplateString, value: string) => {
       const pattern = matchSecret(value);
       if (pattern) {
-        ctx.report(node, `Hard-coded ${pattern.name} in game code; it ships inside the build where players can extract it. Revoke it and move it server-side.`);
+        const secret = pattern.re.exec(value)?.[0] ?? value;
+        ctx.report(node, `Hard-coded ${pattern.name} in game code; it ships inside the build where players can extract it. Revoke it and move it server-side.`, snippetFor(node, secret));
         return;
       }
       const name = assignedName(ctx.ancestors, node);
       if (name && isSensitiveName(name) && looksLikeSecretValue(value)) {
-        ctx.report(node, `${code(name)} is assigned what looks like a hard-coded secret; anything in GML ships inside the build where players can extract it.`);
+        ctx.report(node, `${code(name)} is assigned what looks like a hard-coded secret; anything in GML ships inside the build where players can extract it.`, snippetFor(node, value));
       }
     };
     return {
@@ -296,7 +304,7 @@ export const hardcodedSecret: Rule = {
       },
       MacroDeclaration: (n) => {
         if (n.value?.type === "StringLiteral" && isSensitiveName(n.id.name) && looksLikeSecretValue(n.value.value) && !matchSecret(n.value.value)) {
-          ctx.report(n.value, `Macro ${code(n.id.name)} contains what looks like a hard-coded secret; macros are compiled into the build.`);
+          ctx.report(n.value, `Macro ${code(n.id.name)} contains what looks like a hard-coded secret; macros are compiled into the build.`, snippetFor(n.value, n.value.value));
         }
       },
     };
@@ -309,12 +317,8 @@ export const hardcodedSecret: Rule = {
 const KEY_VALUE = /["']?([A-Za-z0-9_.-]*?(?:pass(?:word|wd)?|pwd|secret|api[_-]?key|apikey|access[_-]?key|private[_-]?key|auth[_-]?token|token|client[_-]?secret|webhook)[A-Za-z0-9_.-]*)["']?\s*[:=]\s*["']?([^"'\s,}#]{16,})/gi;
 
 export function scanTextFile(ctx: ProjectContext, rel: string): void {
-  let text: string;
-  try {
-    text = readFileSync(join(ctx.workspaceRoot, rel), "utf8");
-  } catch {
-    return;
-  }
+  const text = readText(join(ctx.workspaceRoot, rel));
+  if (text === undefined) return;
   const source = new SourceText(text);
   const isWorkflow = /\.github\/workflows\//.test(rel);
   const inShipped = rel.includes("/datafiles/") || rel.startsWith("datafiles/");
@@ -322,14 +326,16 @@ export function scanTextFile(ctx: ProjectContext, rel: string): void {
   for (const p of SECRET_PATTERNS) {
     const re = new RegExp(p.re.source, p.re.flags.includes("g") ? p.re.flags : p.re.flags + "g");
     for (const m of text.matchAll(re)) {
-      ctx.report(ctx.locateText(rel, source, { start: m.index!, end: m.index! + m[0].length }), `Hard-coded ${p.name} in ${where}. Revoke it and remove it from the repository history.`);
+      const loc = ctx.locateText(rel, source, { start: m.index!, end: m.index! + m[0].length });
+      ctx.report(loc, `Hard-coded ${p.name} in ${where}. Revoke it and remove it from the repository history.`, { snippet: redactLine(source.lineText(loc.startLine), m[0]) });
     }
   }
   for (const m of text.matchAll(KEY_VALUE)) {
     const [, key, value] = m;
     if (/public/i.test(key) || /\$\{\{/.test(m[0]) || !isSensitiveName(key) || !looksLikeSecretValue(value) || matchSecret(value)) continue;
     const start = m.index! + m[0].lastIndexOf(value);
-    ctx.report(ctx.locateText(rel, source, { start, end: start + value.length }), `${code(key)} looks like a hard-coded secret in ${where}.`);
+    const loc = ctx.locateText(rel, source, { start, end: start + value.length });
+    ctx.report(loc, `${code(key)} looks like a hard-coded secret in ${where}.`, { snippet: redactLine(source.lineText(loc.startLine), value) });
   }
 }
 

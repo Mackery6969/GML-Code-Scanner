@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { eventCode, findingsFor, scriptCode } from "./helpers.ts";
+import { join, relative, sep } from "node:path";
+import { eventCode, findingsFor, scanFiles, scriptCode, writeProject } from "./helpers.ts";
 
 describe("project rules", () => {
   it("duplicate-resource", () => {
@@ -68,6 +69,16 @@ describe("project rules", () => {
     assert.equal(findingsFor(files, "gml/duplicate-function").length, 1);
     assert.equal(findingsFor(files, "gml/duplicate-macro").length, 1);
     assert.equal(findingsFor(files, "gml/duplicate-enum").length, 2);
+  });
+
+  it("never reads resources outside the project", () => {
+    // A hostile .yyp points a room at a file outside the project; its instances must not be loaded.
+    const outside = writeProject({ "evil/evil.yy": `{"resourceType":"GMRoom","name":"evil","layers":[{"instances":[{"name":"inst_OUTSIDE"}],"layers":[]}]}` }, { yyp: false });
+    const rel = relative(join(outside, ".."), outside).split(sep).join("/");
+    const entry = `    {"id":{"name":"evil","path":"rooms/../../${rel}/evil/evil.yy",},"order":0,},`;
+    const findings = scanFiles(eventCode("x = inst_OUTSIDE;", "Create_0"), { extraEntries: [entry], rules: ["gml/undefined-variable", "gml/missing-resource-file"] });
+    assert.ok(findings.some((f) => f.ruleId === "gml/undefined-variable" && /inst_OUTSIDE/.test(f.message)));
+    assert.ok(findings.some((f) => f.ruleId === "gml/missing-resource-file"));
   });
 
   it("folders without a .yyp skip whole-project checks", () => {

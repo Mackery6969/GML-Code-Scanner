@@ -33,7 +33,7 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: Mackery6969/GML-Code-Scanner@v1
 ```
 
@@ -204,12 +204,18 @@ npm run scan -- path/to/project
 
 `dist/` is committed, because GitHub runs actions straight from the repository. Run `npm run build` before committing source changes; CI fails when `dist/` is out of date.
 
+Dependabot keeps the dev tooling and workflow actions up to date. If an esbuild update changes the bundle, CI's dist check fails on that pull request: check out the branch, run `npm run build`, and commit `dist/`.
+
 ### Releasing
 
 1. Bump `version` in `package.json`, run `npm run build`, and commit.
 2. Tag and push: `git tag v1.2.3 && git push origin v1.2.3`.
 3. The **Release** workflow tests the tag, creates the GitHub release with generated notes, and moves the `v1` tag so `@v1` users get the update.
 4. For the Marketplace: open the release, click **Edit**, tick **Publish this Action to the GitHub Marketplace**, and save. GitHub doesn't allow this step to be automated.
+
+## Security
+
+Found a vulnerability in the scanner itself (not in a game it scanned)? Please report it privately, as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

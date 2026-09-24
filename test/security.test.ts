@@ -80,6 +80,12 @@ describe("other security rules", () => {
     assert.equal(findingsFor(eventCode(`keyboard_key = "abcdefghijklmnop1234";`, "Create_0"), "gml/hardcoded-secret").length, 0);
   });
 
+  it("hardcoded-secret masks the secret in report snippets", () => {
+    const token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    const [f] = findingsFor(eventCode(`gh = "${token}";`, "Create_0"), "gml/hardcoded-secret");
+    assert.ok(f.snippet && !f.snippet.includes(token) && f.snippet.includes("ghp_****"), f.snippet);
+  });
+
   it("hardcoded-secret in datafiles and workflows", () => {
     const f = findingsFor(
       {

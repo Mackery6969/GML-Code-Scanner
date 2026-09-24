@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, join, relative, sep } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 import type { Program } from "../parser/ast.ts";
 import { parse } from "../parser/parser.ts";
 import { parseEventFileName, type EventInfo } from "./events.ts";
@@ -174,12 +174,20 @@ function emptyProject(name: string, rootRel: string, rootAbs: string): Project {
   };
 }
 
-function readText(abs: string): string | undefined {
+/** Reads a regular file; symlinks are refused so a scanned repo can't point the scanner elsewhere. */
+export function readText(abs: string): string | undefined {
   try {
+    if (lstatSync(abs).isSymbolicLink()) return undefined;
     return readFileSync(abs, "utf8");
   } catch {
     return undefined;
   }
+}
+
+/** A .yyp resource path that stays inside the project (no absolute paths, no `..`). */
+function isContainedPath(p: string): boolean {
+  if (isAbsolute(p) || /^[a-zA-Z]:/.test(p) || p.startsWith("\\")) return false;
+  return !normalize(p).split(/[\\/]/).includes("..");
 }
 
 function listDirs(abs: string): string[] {
@@ -231,10 +239,12 @@ function loadProject(wsRoot: string, yypAbs: string, isIgnored: (rel: string) =>
     return info;
   };
 
+  const uncontained = new Set<ResourceInfo>();
   for (const entry of project.yyp.entries) {
     const info = addResource(entry.name, entry.path.split("/")[0], entry.path);
     info.inYyp = true;
     info.yypEntries.push(entry);
+    if (!isContainedPath(entry.path)) uncontained.add(info);
   }
 
   for (const type of RESOURCE_DIRS) {
@@ -245,7 +255,7 @@ function loadProject(wsRoot: string, yypAbs: string, isIgnored: (rel: string) =>
   }
   // Entries whose .yy lives somewhere unexpected (renamed folders) still count if the file exists.
   for (const list of project.resources.values()) {
-    for (const r of list) if (!r.onDisk && r.inYyp) r.onDisk = existsSync(join(wsRoot, r.yyRelPath));
+    for (const r of list) if (!r.onDisk && r.inYyp && !uncontained.has(r)) r.onDisk = existsSync(join(wsRoot, r.yyRelPath));
   }
 
   for (const dir of CODE_DIRS) {

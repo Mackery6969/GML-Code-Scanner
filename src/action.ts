@@ -2,6 +2,7 @@
  * GitHub Action entry point. Implements the few toolkit features it needs (inputs,
  * outputs, annotations, job summary) directly so the bundle has no dependencies.
  */
+import { randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -75,8 +76,13 @@ async function run(): Promise<void> {
 
   const toRepoPath = (file: string) => relative(workspace, join(root, file)).split(sep).join("/");
 
+  // File names and code from the scanned repo are printed below; pause workflow-command
+  // processing so a file named "::error::..." can't inject annotations or commands.
+  const resumeToken = randomUUID().replace(/-/g, "");
   log(`::group::Findings (${result.findings.length})`);
+  log(`::stop-commands::${resumeToken}`);
   process.stdout.write(formatText(result, { color: true, showPaths: true }));
+  log(`::${resumeToken}::`);
   log("::endgroup::");
 
   const sarif = toSarif(result, {

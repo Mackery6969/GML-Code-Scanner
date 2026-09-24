@@ -128,7 +128,7 @@ export function scan(options: ScanOptions): ScanResult {
       location,
       related: extras?.related,
       flow: extras?.flow,
-      snippet: source?.lineText(location.startLine).trim(),
+      snippet: extras?.snippet ?? source?.lineText(location.startLine).trim(),
     });
 
     for (const file of project.files) {

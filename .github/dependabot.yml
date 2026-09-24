@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Dev tooling (TypeScript, esbuild, Node typings). The action itself has no
+  # runtime dependencies; if an esbuild update changes the bundle, run
+  # `npm run build` on the Dependabot branch and commit dist/.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "deps"
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+    ignore:
+      # The action runs on the node24 runtime; keep the typings on Node 24.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  # Actions used by this repo's CI and release workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
