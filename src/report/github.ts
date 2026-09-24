@@ -67,7 +67,7 @@ export function formatStepSummary(result: ScanResult, toRepoPath: (file: string)
   };
   const sorted = [...result.findings].sort((a, b) => RANK[a.severity] - RANK[b.severity]);
   out.push("| | Location | Rule | Message |", "|---|---|---|---|");
-  for (const f of sorted.slice(0, maxRows)) out.push(`| ${icon[f.severity]} | ${link(f)} | \`${f.ruleId}\` | ${f.message.replace(/\|/g, "\\|").replace(/\n/g, " ")} |`);
+  for (const f of sorted.slice(0, maxRows)) out.push(`| ${icon[f.severity]} | ${link(f)} | \`${f.ruleId}\` | ${f.message.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " ")} |`);
   if (sorted.length > maxRows) out.push("", `…and ${sorted.length - maxRows} more. Download the SARIF file or open the Security tab for the full list.`);
   return out.join("\n") + "\n";
 }
