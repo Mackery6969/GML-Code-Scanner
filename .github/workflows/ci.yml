@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  dist:
+    name: Check dist/ and docs are up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run docs
+      - name: Fail if generated files changed
+        run: |
+          if [ -n "$(git status --porcelain dist docs)" ]; then
+            echo "::error::dist/ or docs/rules.md is out of date. Run 'npm run build && npm run docs' and commit the result."
+            git status --porcelain dist docs
+            exit 1
+          fi
+
+  action:
+    name: Run the action on the sample game
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./
+        id: scan
+        with:
+          path: test/fixtures/sample-game
+          fail-on: none
+          upload: false   # the sample game's bugs are deliberate; keep them out of the Security tab
+      - name: Check the outputs
+        run: |
+          echo "findings=${{ steps.scan.outputs.findings }} errors=${{ steps.scan.outputs.errors }}"
+          test "${{ steps.scan.outputs.errors }}" -gt 0
+          test -s "${{ steps.scan.outputs.sarif-file }}"
+          node -e "const s=require('./${{ steps.scan.outputs.sarif-file }}'); if (s.version !== '2.1.0' || !s.runs[0].results.some(r => r.ruleId === 'gml/code-injection' && r.codeFlows)) process.exit(1)"

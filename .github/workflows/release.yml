@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+
+permissions:
+  contents: write # create the release and move the major version tag
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check the tag matches package.json
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION. Bump the version, rebuild, commit, then tag."
+            exit 1
+          fi
+
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Check the committed dist/ matches the source
+        run: |
+          npm run build
+          if [ -n "$(git status --porcelain dist)" ]; then
+            echo "::error::dist/ in $GITHUB_REF_NAME is out of date. Run 'npm run build', commit, and re-tag."
+            exit 1
+          fi
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FLAGS=""
+          case "$GITHUB_REF_NAME" in *-*) FLAGS="--prerelease" ;; esac
+          cp dist/cli.js gmlscan.mjs
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag \
+            $FLAGS \
+            "gmlscan.mjs#gmlscan.mjs (standalone CLI: node gmlscan.mjs <path>)"
+
+      - name: Move the major version tag (v1 → this release)
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: |
+          MAJOR="${GITHUB_REF_NAME%%.*}"
+          git tag -f "$MAJOR" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$MAJOR"
+          echo "Moved $MAJOR to $GITHUB_REF_NAME ($GITHUB_SHA)"
+
+      - name: Marketplace reminder
+        run: |
+          {
+            echo "## Released $GITHUB_REF_NAME"
+            echo ""
+            echo "Users of \`@${GITHUB_REF_NAME%%.*}\` get this version automatically."
+            echo ""
+            echo "To list it on GitHub Marketplace: open the release, click **Edit**, tick"
+            echo "**Publish this Action to the GitHub Marketplace**, and save (GitHub has no API for this step)."
+          } >> "$GITHUB_STEP_SUMMARY"

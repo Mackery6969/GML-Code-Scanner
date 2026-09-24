@@ -1,0 +1,69 @@
+name: "GML Code Scanner"
+description: "Static analysis and security scanning for GameMaker (GML) projects, with SARIF output for GitHub code scanning."
+author: "Mackery"
+
+inputs:
+  path:
+    description: "Directory to scan: a GameMaker project folder (containing a .yyp) or a repository with one or more projects."
+    default: "."
+  config:
+    description: "Path to a config file. Defaults to .gmlscan.json in the scanned directory, if present."
+    default: ""
+  suite:
+    description: "Rule suite: default, security-extended, security-and-quality or all. Overrides the config file."
+    default: ""
+  threat-models:
+    description: "Untrusted data to track, comma-separated: remote (network/HTTP) and/or local (files, user input). Overrides the config file."
+    default: ""
+  runtime:
+    description: "Target GameMaker runtime version (e.g. 2023.1.1.81). Defaults to the IDEVersion in the .yyp."
+    default: ""
+  upload:
+    description: "Upload results to GitHub code scanning (Security tab): auto (upload, warn if unavailable), true (fail if the upload fails) or false."
+    default: "auto"
+  token:
+    description: "Token for the code scanning upload. Needs the security-events: write permission."
+    default: ${{ github.token }}
+  wait-for-processing:
+    description: "Wait until GitHub has processed the upload, to report processing errors."
+    default: "true"
+  sarif-file:
+    description: "Where to write the SARIF report, relative to the workspace."
+    default: "gml-code-scanner.sarif"
+  category:
+    description: "SARIF category, to tell apart several analyses of the same commit (e.g. one per game in a monorepo)."
+    default: "gml-code-scanner"
+  fail-on:
+    description: "Fail the step when findings at this level or above exist: error, warning, note or none."
+    default: "error"
+  annotations:
+    description: "Show findings as inline annotations on pull requests (works without GitHub code scanning)."
+    default: "true"
+  max-annotations:
+    description: "Maximum number of annotations (GitHub shows at most 10 errors and 10 warnings per step inline)."
+    default: "50"
+  step-summary:
+    description: "Write a findings summary to the job summary."
+    default: "true"
+
+outputs:
+  sarif-file:
+    description: "Path of the SARIF report."
+  sarif-id:
+    description: "Code scanning upload id, when results were uploaded."
+  findings:
+    description: "Total number of findings."
+  errors:
+    description: "Number of error-level findings."
+  warnings:
+    description: "Number of warning-level findings."
+  notes:
+    description: "Number of note-level findings."
+
+runs:
+  using: "node24"
+  main: "dist/index.js"
+
+branding:
+  icon: "shield"
+  color: "green"

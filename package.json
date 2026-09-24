@@ -1,0 +1,51 @@
+{
+  "name": "gml-code-scanner",
+  "version": "1.0.0",
+  "description": "Static analysis and security scanning for GameMaker (GML) projects. Finds bugs and vulnerabilities and reports them as SARIF for GitHub code scanning.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Mackery",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mackery6969/GML-Code-Scanner.git"
+  },
+  "homepage": "https://github.com/Mackery6969/GML-Code-Scanner#readme",
+  "bugs": {
+    "url": "https://github.com/Mackery6969/GML-Code-Scanner/issues"
+  },
+  "keywords": [
+    "gamemaker",
+    "gml",
+    "static-analysis",
+    "sarif",
+    "code-scanning",
+    "security",
+    "linter",
+    "github-action"
+  ],
+  "bin": {
+    "gmlscan": "dist/cli.js"
+  },
+  "files": [
+    "dist/cli.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "typecheck": "tsc",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "docs": "node src/cli.ts --list-rules --format markdown --output docs/rules.md",
+    "check": "npm run typecheck && npm test && npm run build && npm run docs",
+    "scan": "node src/cli.ts",
+    "gen:builtins": "node scripts/gen-builtins.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

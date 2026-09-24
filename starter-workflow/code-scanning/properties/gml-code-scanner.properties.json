@@ -1,0 +1,7 @@
+{
+    "name": "GML Code Scanner",
+    "creator": "Mackery",
+    "description": "Find bugs, security vulnerabilities and performance problems in GameMaker (GML) projects, including taint tracking of network data and .yyp project checks.",
+    "iconName": "gml-code-scanner",
+    "categories": ["Code Scanning", "Game Maker Language"]
+}

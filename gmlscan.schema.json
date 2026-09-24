@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/Mackery6969/GML-Code-Scanner/main/gmlscan.schema.json",
+  "title": "GML Code Scanner configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "suite": {
+      "description": "Rule suite to run.",
+      "enum": ["default", "security-extended", "security-and-quality", "all"],
+      "default": "default"
+    },
+    "rules": {
+      "description": "Per-rule overrides: turn rules off or change their severity.",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "enum": ["off", "error", "warning", "note"] },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "severity": { "enum": ["off", "error", "warning", "note"] } }
+          }
+        ]
+      }
+    },
+    "ignore": {
+      "description": "Glob patterns (relative to the scanned folder) to exclude, e.g. \"extensions/**\".",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "runtime": {
+      "description": "Target GameMaker runtime version, e.g. \"2023.1.1.81\". Defaults to the IDEVersion in the .yyp.",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+(\\.\\d+){0,2}$"
+    },
+    "threatModels": {
+      "description": "Untrusted data sources to track: remote (network, HTTP, Steam) and/or local (files, INI, clipboard, command line, keyboard_string).",
+      "type": "array",
+      "items": { "enum": ["remote", "local"] },
+      "uniqueItems": true
+    },
+    "globalPrefixes": {
+      "description": "Variables whose names start with one of these prefixes are treated as declared globals.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "taint": {
+      "description": "Extra taint models, e.g. for networking or shell extensions.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["function"],
+            "additionalProperties": false,
+            "properties": {
+              "function": { "type": "string" },
+              "kind": { "enum": ["remote", "local"], "default": "remote" },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "sinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["function", "arguments", "kind"],
+            "additionalProperties": false,
+            "properties": {
+              "function": { "type": "string" },
+              "arguments": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+              "kind": { "enum": ["code-injection", "path-injection", "command-injection", "variable-injection", "url-redirect", "unsafe-deserialization"] }
+            }
+          }
+        },
+        "sanitizers": {
+          "description": "Functions whose return value is always safe.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "patterns": {
+      "description": "Custom pattern rules. $NAME matches any expression; ... matches any arguments or statements.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "pattern", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "description": "Rule id; reported as custom/<id> unless it contains a slash." },
+          "pattern": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+          "message": { "type": "string", "description": "Message; $NAME is replaced by the matched code." },
+          "severity": { "enum": ["error", "warning", "note"], "default": "warning" },
+          "events": { "type": "array", "items": { "type": "string" }, "description": "Only match in these object events, e.g. [\"Step\", \"Draw GUI\"]." },
+          "where": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Regex constraints on metavariables, e.g. { \"$OBJ\": \"^obj_enemy\" }." },
+          "help": { "type": "string", "description": "Markdown help shown on GitHub." },
+          "category": { "enum": ["security", "correctness", "performance", "maintainability"] }
+        }
+      }
+    }
+  }
+}

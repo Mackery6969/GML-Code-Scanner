@@ -1,0 +1,7 @@
+node_modules/
+*.sarif
+!test/fixtures/**/*.sarif
+*.log
+.DS_Store
+.runtimes/
+coverage/
