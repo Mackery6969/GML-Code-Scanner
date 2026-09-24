@@ -72,16 +72,27 @@ describe("taint tracking", () => {
   });
 });
 
+/**
+ * Provider-format test credentials are assembled at runtime so the repository never
+ * contains a literal that GitHub secret scanning (or push protection) flags. None are real.
+ */
+const fake = {
+  githubToken: ["ghp", "abcdefghijklmnopqrstuvwxyz0123456789"].join("_"),
+  stripeKey: ["sk", "live", "51FakeKeyForTests0000000000"].join("_"),
+  discordWebhook: ["https://discord.com/api/", "webhooks/123456789012345678/", "abcdefghijklmnopqrstuvwxyzABCDEF_-123"].join(""),
+};
+
 describe("other security rules", () => {
   it("hardcoded-secret in code", () => {
-    assert.equal(findingsFor(eventCode(`hook = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEF_-123";`, "Create_0"), "gml/hardcoded-secret").length, 1);
+    assert.equal(findingsFor(eventCode(`hook = "${fake.discordWebhook}";`, "Create_0"), "gml/hardcoded-secret").length, 1);
+    assert.match(findingsFor(eventCode(`key = "${fake.stripeKey}";`, "Create_0"), "gml/hardcoded-secret")[0]?.message ?? "", /Stripe/);
     assert.equal(findingsFor(eventCode(`api_key = "k3J9sd8f7G6h5J4k3L2m1N0pQ9r8S7t6";`, "Create_0"), "gml/hardcoded-secret").length, 1);
     assert.equal(findingsFor(eventCode(`api_key = "YOUR_API_KEY_HERE";`, "Create_0"), "gml/hardcoded-secret").length, 0);
     assert.equal(findingsFor(eventCode(`keyboard_key = "abcdefghijklmnop1234";`, "Create_0"), "gml/hardcoded-secret").length, 0);
   });
 
   it("hardcoded-secret masks the secret in report snippets", () => {
-    const token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    const token = fake.githubToken;
     const [f] = findingsFor(eventCode(`gh = "${token}";`, "Create_0"), "gml/hardcoded-secret");
     assert.ok(f.snippet && !f.snippet.includes(token) && f.snippet.includes("ghp_****"), f.snippet);
   });
@@ -91,7 +102,7 @@ describe("other security rules", () => {
       {
         ...eventCode("x = 1;", "Create_0"),
         "datafiles/config.ini": "[server]\napi_secret=Zx8Kq2Lm9Pw4Rt7Yv3Nb6Hj1\n",
-        ".github/workflows/build.yml": "env:\n  GH: ghp_abcdefghijklmnopqrstuvwxyz0123456789\n",
+        ".github/workflows/build.yml": `env:\n  GH: ${fake.githubToken}\n`,
       },
       "gml/hardcoded-secret",
     );
