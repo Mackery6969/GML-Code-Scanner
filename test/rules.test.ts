@@ -23,6 +23,14 @@ describe("correctness rules", () => {
     assert.equal(count({ ...files, ...eventCode("hurt();") }, "gml/wrong-argument-count"), 1);
   });
 
+  it("extension argument counts come from the args list", () => {
+    const yy = `{"resourceType":"GMExtension","name":"ext_x","files":[{"filename":"ext_x.dll","kind":1,"functions":[{"name":"ext_do","argCount":0,"args":[1,2],"kind":1,},],"constants":[],},],}`;
+    const files = { ...eventCode("ext_do(1, 2); ext_do(1);", "Create_0"), "extensions/ext_x/ext_x.yy": yy };
+    const f = findingsFor(files, "gml/wrong-argument-count", { extraEntries: [`    {"id":{"name":"ext_x","path":"extensions/ext_x/ext_x.yy",},"order":0,},`] });
+    assert.equal(f.length, 1);
+    assert.match(f[0].message, /declared with 2 arguments/);
+  });
+
   it("undefined-variable", () => {
     assert.equal(count(eventCode("x += move_sped;", "Step_0", { "objects/obj_test/Create_0.gml": "move_speed = 4;" }), "gml/undefined-variable"), 1);
     assert.equal(count(eventCode("x += move_speed;", "Step_0", { "objects/obj_test/Create_0.gml": "move_speed = 4;" }), "gml/undefined-variable"), 0);

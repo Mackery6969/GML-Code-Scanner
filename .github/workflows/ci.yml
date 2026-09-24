@@ -64,6 +64,7 @@ jobs:
           path: test/fixtures/sample-game
           fail-on: none
           upload: false   # the sample game's bugs are deliberate; keep them out of the Security tab
+          pr-scope: all   # check every finding, even on pull requests that don't touch the sample game
       - name: Check the outputs
         env:
           SARIF: ${{ steps.scan.outputs.sarif-file }}

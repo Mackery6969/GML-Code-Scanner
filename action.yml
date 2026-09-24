@@ -36,6 +36,9 @@ inputs:
   fail-on:
     description: "Fail the step when findings at this level or above exist: error, warning, note or none."
     default: "error"
+  pr-scope:
+    description: "On pull requests, which findings to annotate and fail on: changed-lines (only lines the PR adds or edits), changed-files, or all. The SARIF always contains every finding. Needs pull-requests: read."
+    default: "changed-lines"
   annotations:
     description: "Show findings as inline annotations on pull requests (works without GitHub code scanning)."
     default: "true"
@@ -52,13 +55,15 @@ outputs:
   sarif-id:
     description: "Code scanning upload id, when results were uploaded."
   findings:
-    description: "Total number of findings."
+    description: "Number of reported findings (on pull requests, only those within pr-scope)."
+  total-findings:
+    description: "Number of findings in the whole project."
   errors:
-    description: "Number of error-level findings."
+    description: "Number of reported error-level findings."
   warnings:
-    description: "Number of warning-level findings."
+    description: "Number of reported warning-level findings."
   notes:
-    description: "Number of note-level findings."
+    description: "Number of reported note-level findings."
 
 runs:
   using: "node24"

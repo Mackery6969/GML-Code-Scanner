@@ -30,6 +30,12 @@ describe("config", () => {
     assert.equal(f.length, 1);
   });
 
+  it("ignored paths still provide definitions", () => {
+    const files = { ...eventCode("x = vendor_helper(1);"), "scripts/vendor_lib/vendor_lib.gml": "function vendor_helper(a) { exit; return a; }" };
+    const f = scanFiles(files, { config: { ignore: ["scripts/vendor_*/**"] }, rules: ["gml/undefined-function", "gml/unreachable-code"] });
+    assert.deepEqual(f, []);
+  });
+
   it("suites select rules", () => {
     const dir = writeProject(eventCode("x = 1;"));
     const ids = (suite: "default" | "security-extended" | "security-and-quality") => new Set(scanProject(dir, { suite }).rules.map((r) => r.id));

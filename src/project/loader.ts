@@ -258,15 +258,14 @@ function loadProject(wsRoot: string, yypAbs: string, isIgnored: (rel: string) =>
     for (const r of list) if (!r.onDisk && r.inYyp && !uncontained.has(r)) r.onDisk = existsSync(join(wsRoot, r.yyRelPath));
   }
 
+  // Ignored paths are still loaded: their functions, macros and assets are part of the
+  // project. The scanner only drops findings reported inside them.
   for (const dir of CODE_DIRS) {
     const typeDir = join(rootAbs, dir);
     for (const name of listDirs(typeDir)) {
       const resDir = join(typeDir, name);
-      if (isIgnored(rel(resDir))) continue;
       for (const f of listFiles(resDir)) {
-        if (!f.endsWith(".gml")) continue;
-        const abs = join(resDir, f);
-        if (!isIgnored(rel(abs))) addGmlFile(project, wsRoot, abs);
+        if (f.endsWith(".gml")) addGmlFile(project, wsRoot, join(resDir, f));
       }
     }
   }
@@ -406,7 +405,9 @@ function loadExtensions(project: Project, wsRoot: string): void {
         for (const fn of yyArray(f.functions)) {
           const def = fn as Record<string, unknown>;
           const n = yyName(def);
-          if (n) project.extensionFunctions.set(n, { extension: r.name, argCount: typeof def.argCount === "number" ? def.argCount : -1 });
+          // `args` lists the real parameters; `argCount` is often 0 and only meaningful as -1 (variadic).
+          const argCount = def.argCount === -1 ? -1 : Array.isArray(def.args) ? def.args.length : typeof def.argCount === "number" ? def.argCount : -1;
+          if (n) project.extensionFunctions.set(n, { extension: r.name, argCount });
         }
         for (const c of yyArray(f.constants)) {
           const n = yyName(c) ?? (c as Record<string, unknown>).constantName;

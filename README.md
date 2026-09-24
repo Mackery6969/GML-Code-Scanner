@@ -40,7 +40,7 @@ jobs:
 That's all. Like CodeQL's analysis step, the action uploads its results to **Security → Code scanning** itself, adds annotations to pull requests, and writes a summary to the job page. If your GameMaker project isn't at the repository root, add `with: path: MyGame`.
 
 - **Public repositories:** code scanning is free, and results show up in the Security tab after the first run.
-- **Private repositories without GitHub Code Security:** the upload is skipped with a notice, and you still get pull request annotations and the job summary. Add `with: upload: false` to silence the notice.
+- **Private repositories without GitHub Code Security:** the upload is skipped with a notice, and you still get pull request annotations and the job summary. Add `with: upload: false` to silence the notice. On pull requests, only findings on the lines the pull request changes are annotated and can fail the job (see `pr-scope`), so existing issues don't bury new ones.
 - **Pull requests from forks** can't upload (GitHub gives them a read-only token). They still get annotations.
 
 Want the job to fail on findings? It already does for `error`-level findings. Set `fail-on: warning` to be stricter, or `fail-on: none` to only report.
@@ -60,11 +60,50 @@ Want the job to fail on findings? It already does for `error`-level findings. Se
 | `sarif-file` | `gml-code-scanner.sarif` | Where to write the SARIF report (also usable as an artifact). |
 | `category` | `gml-code-scanner` | SARIF category, used to tell several analyses of the same commit apart (for example, several games in one repo). |
 | `fail-on` | `error` | Fail the step on findings at this level or above: `error`, `warning`, `note`, `none`. |
+| `pr-scope` | `changed-lines` | On pull requests, which findings to annotate and fail on: `changed-lines`, `changed-files` or `all`. The SARIF always has every finding. Needs `pull-requests: read`. |
 | `annotations` | `true` | Add inline annotations to the pull request. |
 | `max-annotations` | `50` | Maximum annotations per run. |
 | `step-summary` | `true` | Write a findings table to the job summary. |
 
-**Outputs:** `sarif-file`, `sarif-id`, `findings`, `errors`, `warnings`, `notes`.
+**Outputs:** `sarif-file`, `sarif-id`, `findings`, `errors`, `warnings`, `notes` (on pull requests these count only findings within `pr-scope`), and `total-findings`.
+
+### Big repositories and private repositories
+
+GameMaker repositories are mostly sprites and audio, which the scanner never reads. A blobless, sparse checkout fetches only code and project metadata, which is much faster for large games. For a private repository without code scanning, you can also keep the SARIF report as a build artifact and open it in VS Code with the SARIF Viewer:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: read   # for pr-scope
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*.yyp
+            /.gmlscan.json
+            **/*.yy
+            **/*.gml
+            /datafiles/**/*.ini
+            /datafiles/**/*.json
+            /datafiles/**/*.txt
+      - uses: Mackery6969/GML-Code-Scanner@v1
+        id: scan
+        with:
+          upload: false
+          # Pull requests fail on new errors in the lines they change; pushes only report.
+          fail-on: ${{ github.event_name == 'pull_request' && 'error' || 'none' }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gml-code-scanner-sarif
+          path: ${{ steps.scan.outputs.sarif-file }}
+```
 
 ## Rule suites
 
@@ -90,7 +129,7 @@ Create `.gmlscan.json` in your project folder (`npx github:Mackery6969/GML-Code-
     "gml/unused-function": "off",       // or "error" | "warning" | "note"
     "gml/wrong-argument-count": "error"
   },
-  "ignore": ["extensions/**", "scripts/vendor_*/**"],
+  "ignore": ["extensions/**", "scripts/vendor_*/**"],   // no findings reported here (still read for definitions)
   "threatModels": ["remote", "local"],
   "globalPrefixes": ["g_"],              // treat g_* names as declared globals
   "runtime": "2023.1.1.81"

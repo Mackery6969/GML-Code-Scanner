@@ -26,7 +26,7 @@
       }
     },
     "ignore": {
-      "description": "Glob patterns (relative to the scanned folder) to exclude, e.g. \"extensions/**\".",
+      "description": "Glob patterns (relative to the scanned folder) whose findings are not reported, e.g. \"extensions/**\". Files in a .yyp project are still read, so functions and assets defined there stay known.",
       "type": "array",
       "items": { "type": "string" }
     },

@@ -40,7 +40,7 @@ export interface Config {
   $schema?: string;
   suite?: Suite;
   rules?: Record<string, RuleSetting>;
-  /** Glob patterns (workspace-relative) to exclude. */
+  /** Glob patterns (workspace-relative) whose findings are dropped; project files there are still indexed. */
   ignore?: string[];
   /** Target GameMaker runtime (e.g. "2023.1.1.81"); defaults to the .yyp IDEVersion. */
   runtime?: string;
