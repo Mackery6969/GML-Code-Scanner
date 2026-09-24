@@ -1,8 +1,7 @@
 version: 2
 updates:
   # Dev tooling (TypeScript, esbuild, Node typings). The action itself has no
-  # runtime dependencies; if an esbuild update changes the bundle, run
-  # `npm run build` on the Dependabot branch and commit dist/.
+  # runtime dependencies; dist/ is built by the release workflow.
   - package-ecosystem: "npm"
     directory: "/"
     schedule:

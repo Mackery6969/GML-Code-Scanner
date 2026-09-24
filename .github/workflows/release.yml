@@ -1,5 +1,10 @@
 name: Release
 
+# Push a tag like v1.2.3 (or v1.2.3-beta.1 for a pre-release) to publish a release.
+#
+# dist/ is not committed on branches. This workflow builds it, commits it on top of the
+# tagged commit, and points the version tag (and the major tag, e.g. v1) at that commit,
+# so `uses: Mackery6969/GML-Code-Scanner@v1` always gets a bundled action.
 on:
   push:
     tags:
@@ -7,7 +12,7 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+-*"
 
 permissions:
-  contents: write # create the release and move the major version tag
+  contents: write # push the release commit/tags and create the release
 
 concurrency:
   group: release
@@ -33,42 +38,61 @@ jobs:
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           PKG_VERSION="$(node -p "require('./package.json').version")"
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION. Bump the version, rebuild, commit, then tag."
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION. Bump the version, commit, then tag."
             exit 1
           fi
 
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build
 
-      - name: Check the committed dist/ matches the source
+      - name: Check docs/rules.md is up to date
         run: |
-          npm run build
-          if [ -n "$(git status --porcelain dist)" ]; then
-            echo "::error::dist/ in $GITHUB_REF_NAME is out of date. Run 'npm run build', commit, and re-tag."
+          npm run docs
+          if ! git diff --quiet -- docs/rules.md; then
+            echo "::error::docs/rules.md in $GITHUB_REF_NAME is out of date. Run 'npm run docs', commit, and re-tag."
             exit 1
           fi
+
+      - name: Commit the bundle and point the tags at it
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --detach   # the release commit must not land on any branch
+          git add --force dist
+          git commit --allow-empty -m "Release $GITHUB_REF_NAME (bundled dist/)"
+          RELEASE_SHA="$(git rev-parse HEAD)"
+          git tag -f "$GITHUB_REF_NAME" "$RELEASE_SHA"
+          TAGS="refs/tags/$GITHUB_REF_NAME"
+          case "$GITHUB_REF_NAME" in
+            *-*) ;; # pre-releases don't move the major tag
+            *)
+              MAJOR="${GITHUB_REF_NAME%%.*}"
+              git tag -f "$MAJOR" "$RELEASE_SHA"
+              TAGS="$TAGS refs/tags/$MAJOR"
+              ;;
+          esac
+          git push -f origin $TAGS
+          echo "Tagged $RELEASE_SHA as: $TAGS"
 
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          FLAGS=""
-          case "$GITHUB_REF_NAME" in *-*) FLAGS="--prerelease" ;; esac
           cp dist/cli.js gmlscan.mjs
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            --verify-tag \
-            $FLAGS \
-            "gmlscan.mjs#gmlscan.mjs (standalone CLI: node gmlscan.mjs <path>)"
-
-      - name: Move the major version tag (v1 → this release)
-        if: ${{ !contains(github.ref_name, '-') }}
-        run: |
-          MAJOR="${GITHUB_REF_NAME%%.*}"
-          git tag -f "$MAJOR" "$GITHUB_SHA"
-          git push -f origin "refs/tags/$MAJOR"
-          echo "Moved $MAJOR to $GITHUB_REF_NAME ($GITHUB_SHA)"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Created by hand in the UI: just attach the CLI.
+            gh release upload "$GITHUB_REF_NAME" "gmlscan.mjs#gmlscan.mjs (standalone CLI: node gmlscan.mjs <path>)" --clobber
+          else
+            FLAGS=""
+            case "$GITHUB_REF_NAME" in *-*) FLAGS="--prerelease" ;; esac
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              --verify-tag \
+              $FLAGS \
+              "gmlscan.mjs#gmlscan.mjs (standalone CLI: node gmlscan.mjs <path>)"
+          fi
 
       - name: Marketplace reminder
         run: |

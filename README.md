@@ -80,7 +80,7 @@ See **[docs/rules.md](docs/rules.md)** for every rule, with examples and fixes.
 
 ## Configuration
 
-Create `.gmlscan.json` in your project folder (`npx github:Mackery6969/GML-Code-Scanner --init` writes a commented starter file). Comments and trailing commas are allowed.
+Create `.gmlscan.json` in your project folder (`npx github:Mackery6969/GML-Code-Scanner#v1 --init` writes a commented starter file). Comments and trailing commas are allowed.
 
 ```jsonc
 {
@@ -153,10 +153,10 @@ Sink kinds: `code-injection`, `path-injection`, `command-injection`, `variable-i
 The same scanner runs locally. It needs only Node.js 20+ (no npm packages or GameMaker install):
 
 ```sh
-npx github:Mackery6969/GML-Code-Scanner path/to/project            # console report
-npx github:Mackery6969/GML-Code-Scanner . --suite all --paths       # everything, with data-flow paths
-npx github:Mackery6969/GML-Code-Scanner . --format sarif -o out.sarif
-npx github:Mackery6969/GML-Code-Scanner --list-rules
+npx github:Mackery6969/GML-Code-Scanner#v1 path/to/project            # console report
+npx github:Mackery6969/GML-Code-Scanner#v1 . --suite all --paths       # everything, with data-flow paths
+npx github:Mackery6969/GML-Code-Scanner#v1 . --format sarif -o out.sarif
+npx github:Mackery6969/GML-Code-Scanner#v1 --list-rules
 ```
 
 It exits with 1 when findings at or above `--fail-on` (default `error`) exist, which makes it usable as a pre-commit hook. In VS Code, open the SARIF file with Microsoft's [SARIF Viewer](https://marketplace.visualstudio.com/items?itemName=MS-SarifVSCode.sarif-viewer) to jump through findings and data-flow paths.
@@ -167,7 +167,7 @@ It exits with 1 when findings at or above `--fail-on` (default `error`) exist, w
 - **Copilot in your editor, or the coding agent:** add this to your game repo's `.github/copilot-instructions.md` so Copilot checks its own GML changes:
 
   ```markdown
-  After changing GML code, run `npx github:Mackery6969/GML-Code-Scanner . --format json`
+  After changing GML code, run `npx github:Mackery6969/GML-Code-Scanner#v1 . --format json`
   and fix any findings. Rule documentation:
   https://github.com/Mackery6969/GML-Code-Scanner/blob/main/docs/rules.md
   ```
@@ -202,15 +202,15 @@ npm run build       # bundles dist/index.js (action) and dist/cli.js (CLI)
 npm run scan -- path/to/project
 ```
 
-`dist/` is committed, because GitHub runs actions straight from the repository. Run `npm run build` before committing source changes; CI fails when `dist/` is out of date.
+`dist/` isn't committed on branches. The release workflow builds it and commits it into each release tag, so pull requests (including Copilot autofix and Dependabot ones) only ever touch the source. Run `npm run docs` when you change a rule's help text; CI checks that `docs/rules.md` is current.
 
-Dependabot keeps the dev tooling and workflow actions up to date. If an esbuild update changes the bundle, CI's dist check fails on that pull request: check out the branch, run `npm run build`, and commit `dist/`.
+Dependabot keeps the dev tooling and workflow actions up to date.
 
 ### Releasing
 
-1. Bump `version` in `package.json`, run `npm run build`, and commit.
-2. Tag and push: `git tag v1.2.3 && git push origin v1.2.3`.
-3. The **Release** workflow tests the tag, creates the GitHub release with generated notes, and moves the `v1` tag so `@v1` users get the update.
+1. Bump `version` in `package.json` and commit.
+2. Tag and push: `git tag v1.2.3 && git push origin v1.2.3`. Push the tag rather than creating the release in the web UI: the workflow needs to move the tag onto the build.
+3. The **Release** workflow tests the tag, builds `dist/`, commits it on top of the tagged commit, points `v1.2.3` and `v1` at that commit, and creates the GitHub release with generated notes.
 4. For the Marketplace: open the release, click **Edit**, tick **Publish this Action to the GitHub Marketplace**, and save. GitHub doesn't allow this step to be automated.
 
 ## Security

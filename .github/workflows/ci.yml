@@ -26,8 +26,29 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
-  dist:
-    name: Check dist/ and docs are up to date
+  build:
+    name: Build and check docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # dist/ isn't committed on branches; the release workflow builds it into each release tag.
+      - run: npm run build
+      - run: npm run docs
+      - name: Fail if docs/rules.md is out of date
+        run: |
+          if ! git diff --quiet -- docs/rules.md; then
+            echo "::error::docs/rules.md is out of date. Run 'npm run docs' and commit the result."
+            git diff --stat -- docs/rules.md
+            exit 1
+          fi
+
+  action:
+    name: Run the action on the sample game
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -37,20 +58,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm run docs
-      - name: Fail if generated files changed
-        run: |
-          if [ -n "$(git status --porcelain dist docs)" ]; then
-            echo "::error::dist/ or docs/rules.md is out of date. Run 'npm run build && npm run docs' and commit the result."
-            git status --porcelain dist docs
-            exit 1
-          fi
-
-  action:
-    name: Run the action on the sample game
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
       - uses: ./
         id: scan
         with:
@@ -58,8 +65,15 @@ jobs:
           fail-on: none
           upload: false   # the sample game's bugs are deliberate; keep them out of the Security tab
       - name: Check the outputs
+        env:
+          SARIF: ${{ steps.scan.outputs.sarif-file }}
+          ERRORS: ${{ steps.scan.outputs.errors }}
         run: |
-          echo "findings=${{ steps.scan.outputs.findings }} errors=${{ steps.scan.outputs.errors }}"
-          test "${{ steps.scan.outputs.errors }}" -gt 0
-          test -s "${{ steps.scan.outputs.sarif-file }}"
-          node -e "const s=require('./${{ steps.scan.outputs.sarif-file }}'); if (s.version !== '2.1.0' || !s.runs[0].results.some(r => r.ruleId === 'gml/code-injection' && r.codeFlows)) process.exit(1)"
+          echo "findings=${{ steps.scan.outputs.findings }} errors=$ERRORS"
+          test "$ERRORS" -gt 0
+          test -s "$SARIF"
+          node -e '
+            const s = JSON.parse(require("fs").readFileSync(process.env.SARIF, "utf8"));
+            const ok = s.version === "2.1.0" && s.runs[0].results.some((r) => r.ruleId === "gml/code-injection" && r.codeFlows);
+            if (!ok) { console.error("SARIF is missing the expected code-injection result with a data-flow path"); process.exit(1); }
+          '
