@@ -140,6 +140,29 @@ Create `.gmlscan.json` in your project folder (`npx github:Mackery6969/GML-Code-
 }
 ```
 
+### Ignoring files
+
+Put a `.gmlscanignore` file in the folder you scan, or in any folder above it up to the repository root. It works like `.gitignore`:
+
+```gitignore
+# third-party code
+scripts/vendor_*/
+extensions/
+
+# but keep checking this one
+!scripts/vendor_ourfork/
+
+# only at the top of the folder this file is in
+/datafiles/generated/
+```
+
+- A pattern without a `/` (apart from a trailing one) matches at any depth; one with a `/` is relative to the file's own folder.
+- A trailing `/` matches folders only. `*`, `?` and `**` work as in `.gitignore`.
+- `!` brings back something an earlier line ignored, and the last matching line wins.
+- Files further down override files further up, and the `"ignore"` list in `.gmlscan.json` is applied last.
+
+Findings in ignored files aren't reported, but files in a `.yyp` project are still read, so the functions and assets they define stay known and don't show up as undefined elsewhere.
+
 ### Suppressing findings
 
 ```gml
