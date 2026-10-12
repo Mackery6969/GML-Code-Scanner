@@ -21,6 +21,12 @@ function input(name: string, fallback = ""): string {
   return v === undefined || v.trim() === "" ? fallback : v.trim();
 }
 
+const githubToken = () => input("token") || process.env.GITHUB_TOKEN || "";
+
+const githubApiUrl = () => process.env.GITHUB_API_URL ?? "https://api.github.com";
+
+const toPosix = (path: string) => path.split(sep).join("/");
+
 function setOutput(name: string, value: string | number): void {
   const file = process.env.GITHUB_OUTPUT;
   if (file) appendFileSync(file, `${name}=${value}\n`);
@@ -93,7 +99,7 @@ async function run(): Promise<void> {
   }
   if (result.projects.length === 0) warn(`No GameMaker project (.yyp) or .gml files found under ${relative(workspace, root) || "."}. Set the "path" input to your project folder.`);
 
-  const toRepoPath = (file: string) => relative(workspace, join(root, file)).split(sep).join("/");
+  const toRepoPath = (file: string) => toPosix(relative(workspace, join(root, file)));
 
   // File names and code from the scanned repo are printed below; pause workflow-command
   // processing so a file named "::error::..." can't inject annotations or commands.
@@ -123,8 +129,8 @@ async function run(): Promise<void> {
   if (pull !== undefined && prScope !== "all") {
     try {
       const changes = await fetchPullRequestChanges({
-        token: input("token") || process.env.GITHUB_TOKEN || "",
-        apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com",
+        token: githubToken(),
+        apiUrl: githubApiUrl(),
         repository: process.env.GITHUB_REPOSITORY ?? "",
         pull,
       });
@@ -146,7 +152,7 @@ async function run(): Promise<void> {
   // Upload to code scanning, like CodeQL's analyze step.
   let uploadNote = "";
   if (upload !== "false" && upload !== "never") {
-    const token = input("token") || process.env.GITHUB_TOKEN || "";
+    const token = githubToken();
     const repository = process.env.GITHUB_REPOSITORY;
     const sha = process.env.GITHUB_SHA;
     const ref = process.env.GITHUB_REF;
@@ -159,7 +165,7 @@ async function run(): Promise<void> {
       try {
         const res = await uploadSarif(sarif, {
           token,
-          apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com",
+          apiUrl: githubApiUrl(),
           repository,
           sha,
           ref,
@@ -197,7 +203,7 @@ async function run(): Promise<void> {
 
   const counts = { error: 0, warning: 0, note: 0 };
   for (const f of reported) counts[f.severity]++;
-  setOutput("sarif-file", relative(workspace, sarifFile).split(sep).join("/"));
+  setOutput("sarif-file", toPosix(relative(workspace, sarifFile)));
   setOutput("findings", reported.length);
   setOutput("total-findings", result.findings.length);
   setOutput("errors", counts.error);
