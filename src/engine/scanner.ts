@@ -1,4 +1,6 @@
 import { resolve } from "node:path";
+import { detectDependencies, detectRuntime, type DetectedDependency, type RuntimeTarget } from "../deps/detect.ts";
+import { BUILTIN_DEPENDENCIES } from "../deps/registry.ts";
 import type * as A from "../parser/ast.ts";
 import { walk } from "../parser/walk.ts";
 import { loadWorkspace, type GmlFile, type Project } from "../project/loader.ts";
@@ -52,6 +54,10 @@ export interface ScanResult {
   durationMs: number;
   config: ResolvedConfig;
   internalErrors: InternalError[];
+  /** Extensions and libraries found in the projects (versions are checked by src/deps/updates.ts). */
+  dependencies: DetectedDependency[];
+  /** The GameMaker version each project targets. */
+  runtimes: RuntimeTarget[];
 }
 
 const FUNCTION_TYPES = new Set(["FunctionDeclaration", "FunctionExpression"]);
@@ -107,6 +113,9 @@ export function scan(options: ScanOptions): ScanResult {
   const findings: Finding[] = [];
   const internalErrors: InternalError[] = [];
   const projects: ProjectSummary[] = [];
+  const dependencies: DetectedDependency[] = [];
+  const runtimes: RuntimeTarget[] = [];
+  const dependencySpecs = [...config.dependencies.sources, ...BUILTIN_DEPENDENCIES];
   let filesScanned = 0;
   // CI workflows and .env files at the repository root are checked once, with the first project.
   workspace.projects[0]?.auxiliaryFiles.push(...workspace.auxiliaryFiles);
@@ -121,6 +130,9 @@ export function scan(options: ScanOptions): ScanResult {
       runtimeChecks: index.runtimeIndex >= 0,
     });
     filesScanned += project.files.length;
+    dependencies.push(...detectDependencies(project, dependencySpecs));
+    const runtime = detectRuntime(project, config.runtime);
+    if (runtime) runtimes.push(runtime);
     const projectFindings: Finding[] = [];
     const makeFinding = (ruleId: string, location: SourceLocation, message: string, source: SourceText | undefined, extras?: ReportExtras): Finding => ({
       ruleId,
@@ -175,6 +187,8 @@ export function scan(options: ScanOptions): ScanResult {
     durationMs: performance.now() - started,
     config,
     internalErrors,
+    dependencies,
+    runtimes,
   };
 }
 
@@ -272,7 +286,7 @@ function applySuppressions(findings: Finding[], project: Project, isIgnored: (p:
   return findings.filter((f) => !isIgnored(f.location.file) && !byFile.get(f.location.file)?.isSuppressed(f.ruleId, f.location.startLine));
 }
 
-function dedupeAndSort(findings: Finding[]): Finding[] {
+export function dedupeAndSort(findings: Finding[]): Finding[] {
   const seen = new Set<string>();
   const out: Finding[] = [];
   for (const f of findings) {

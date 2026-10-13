@@ -5,8 +5,11 @@ import { parseArgs } from "node:util";
 import { CONFIG_FILE_NAMES, ConfigError, type ThreatModel } from "./engine/config.ts";
 import { exceedsThreshold, isRuleInSuite, scan, type ScanResult } from "./engine/scanner.ts";
 import type { Suite } from "./engine/types.ts";
+import { checkUpdates, mergeUpdateFindings, type UpdateCheckResult } from "./deps/updates.ts";
+import { dependencyReportsJson } from "./report/dependencies.ts";
 import { formatText } from "./report/text.ts";
 import { toSarif } from "./report/sarif.ts";
+import { DEPENDENCY_RULES } from "./rules/dependencies.ts";
 import { ALL_RULES, SYNTAX_ERROR_RULE } from "./rules/index.ts";
 import { REPOSITORY_URL, TOOL_NAME, VERSION } from "./version.ts";
 
@@ -32,6 +35,12 @@ Analysis:
       --fail-on <level>     Exit with 1 when findings at this level exist:
                             error (default), warning, note, none
 
+Dependencies:
+      --check-updates       Look up newer versions of extensions and libraries
+                            (needs network; GITHUB_TOKEN raises GitHub's rate limit)
+      --runtime-updates     Also report newer GameMaker runtimes, and updates
+                            that need one
+
 Other:
       --list-rules          List all rules (use --format markdown for docs)
       --init                Write a starter .gmlscan.json
@@ -44,7 +53,7 @@ Docs: ${REPOSITORY_URL}
 `;
 
 function listRules(format: string): string {
-  const rules = [...ALL_RULES, SYNTAX_ERROR_RULE].map((r) => r.meta);
+  const rules = [...ALL_RULES, SYNTAX_ERROR_RULE, ...DEPENDENCY_RULES].map((r) => r.meta);
   if (format === "json") return JSON.stringify(rules, null, 2) + "\n";
   if (format === "markdown") {
     const suites: Suite[] = ["default", "security-extended", "security-and-quality"];
@@ -83,6 +92,17 @@ const STARTER_CONFIG = `{
     // "gml/unused-function": "off"
   },
 
+  // Check extensions and libraries for updates that support this project's GameMaker version
+  "dependencies": {
+    "checkUpdates": true,       // without this, the command line only checks with --check-updates
+    "runtimeUpdates": false,    // also suggest newer GameMaker runtimes
+    "autoUpdate": true,         // GitHub Action: open pull requests that update extensions
+    "ignore": [
+      // "GMLive",
+      // { "name": "Steamworks", "updateTypes": ["major"] }
+    ]
+  },
+
   // Paths to skip (globs, relative to this file)
   "ignore": [
     // "extensions/**",
@@ -118,7 +138,7 @@ const STARTER_CONFIG = `{
 }
 `;
 
-export function main(argv: string[]): number {
+export async function main(argv: string[]): Promise<number> {
   let args;
   try {
     args = parseArgs({
@@ -136,6 +156,8 @@ export function main(argv: string[]): number {
         runtime: { type: "string" },
         "threat-model": { type: "string", multiple: true },
         "fail-on": { type: "string" },
+        "check-updates": { type: "boolean" },
+        "runtime-updates": { type: "boolean" },
         "list-rules": { type: "boolean" },
         init: { type: "boolean" },
         version: { type: "boolean", short: "v" },
@@ -218,11 +240,20 @@ export function main(argv: string[]): number {
     throw e;
   }
 
+  let updates: UpdateCheckResult | undefined;
+  const runtimeUpdates = o["runtime-updates"] ?? result.config.dependencies.runtimeUpdates;
+  if (o["check-updates"] || o["runtime-updates"] || result.config.dependencies.checkUpdates) {
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || undefined;
+    updates = await checkUpdates(result, { http: { fetch, githubToken: token }, runtimeUpdates, onlyRules: o.rule });
+    mergeUpdateFindings(result, updates);
+  }
+
   const sarifOf = () => JSON.stringify(toSarif(result, { toolName: TOOL_NAME, toolVersion: VERSION, informationUri: REPOSITORY_URL, scanRoot: root }), null, 2) + "\n";
   let report: string;
   if (format === "sarif") report = sarifOf();
-  else if (format === "json") report = JSON.stringify({ version: VERSION, projects: result.projects, findings: result.findings, filesScanned: result.filesScanned, durationMs: Math.round(result.durationMs) }, null, 2) + "\n";
-  else report = formatText(result, { color: !o["no-color"] && !o.output && process.stdout.isTTY === true && !process.env.NO_COLOR, showPaths: o.paths });
+  else if (format === "json")
+    report = JSON.stringify({ version: VERSION, projects: result.projects, findings: result.findings, filesScanned: result.filesScanned, durationMs: Math.round(result.durationMs), ...(updates ? (dependencyReportsJson(updates) as object) : {}) }, null, 2) + "\n";
+  else report = formatText(result, { color: !o["no-color"] && !o.output && process.stdout.isTTY === true && !process.env.NO_COLOR, showPaths: o.paths, updates });
 
   if (o.output) {
     mkdirSync(dirname(resolve(o.output)), { recursive: true });
@@ -239,4 +270,12 @@ export function main(argv: string[]): number {
 }
 
 const invokedDirectly = process.argv[1] && /(?:cli\.(?:ts|js)|gmlscan)$/.test(process.argv[1].replace(/\\/g, "/"));
-if (invokedDirectly) process.exitCode = main(process.argv.slice(2));
+if (invokedDirectly) {
+  main(process.argv.slice(2)).then(
+    (code) => (process.exitCode = code),
+    (e) => {
+      process.stderr.write(`gmlscan: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);
+      process.exitCode = 2;
+    },
+  );
+}

@@ -1,10 +1,14 @@
+import type { UpdateCheckResult } from "../deps/updates.ts";
 import type { ScanResult } from "../engine/scanner.ts";
 import type { Finding, Severity } from "../engine/types.ts";
+import { formatDependenciesText } from "./dependencies.ts";
 
 export interface TextOptions {
   color: boolean;
   /** Show data-flow paths for security findings. */
   showPaths?: boolean;
+  /** Dependency update check results, listed after the findings. */
+  updates?: UpdateCheckResult;
 }
 
 const ANSI = {
@@ -46,6 +50,10 @@ export function formatText(result: ScanResult, options: TextOptions): string {
   const counts = { error: 0, warning: 0, note: 0 };
   for (const f of result.findings) counts[f.severity]++;
   const total = result.findings.length;
+  if (options.updates) {
+    const deps = formatDependenciesText(options.updates, c);
+    if (deps) lines.push(deps.replace(/\n$/, ""));
+  }
   lines.push("");
   for (const p of result.projects) {
     const rt = p.runtime ? `, runtime ${p.runtime}${p.runtimeChecks ? "" : " (no exact runtime data: availability checks off)"}` : "";
