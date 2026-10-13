@@ -235,7 +235,9 @@ export function pullRequestBody(ctx: PrContext): string {
   lines.push("| | |", "|---|---|");
   lines.push(`| Release | [${spec.name} ${u.release.version}](${u.release.url}) from ${describeSource(spec.source)} |`);
   if (u.release.packageAsset) lines.push(`| Package | \`${u.release.packageAsset.name}\` |`);
-  const runtime = u.requirement?.minimum ? `Needs GameMaker ${u.requirement.minimum} or later (${u.requirement.basis.join("; ").replace(/\|/g, "\\|")}).` : "";
+  const runtime = u.requirement?.minimum
+    ? `Needs GameMaker ${u.requirement.minimum} or later (${u.requirement.basis.join("; ").replace(/\\/g, "\\\\").replace(/\|/g, "\\|")}).`
+    : "";
   lines.push(`| GameMaker | ${runtime}${report.runtime ? ` This project targets ${report.runtime}.` : ""} |`);
   if (u.updateType) lines.push(`| Update type | ${u.updateType}${u.updateType === "major" ? ": check the release notes for breaking changes" : ""} |`);
   lines.push("");
