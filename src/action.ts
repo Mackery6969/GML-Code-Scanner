@@ -18,6 +18,7 @@ import { formatDependencySummary } from "./report/dependencies.ts";
 import { formatAnnotations, formatStepSummary } from "./report/github.ts";
 import { toSarif } from "./report/sarif.ts";
 import { formatText } from "./report/text.ts";
+import { loadRuntimeSpec, RuntimeSpecError, type RuntimeSpec } from "./semantic/runtime-spec.ts";
 import { REPOSITORY_URL, TOOL_NAME, VERSION } from "./version.ts";
 
 function input(name: string, fallback = ""): string {
@@ -125,6 +126,20 @@ async function run(): Promise<void> {
   }
 
   log(`${TOOL_NAME} ${VERSION}: scanning ${relative(workspace, root) || "."}`);
+
+  // An installed runtime (such as bscotch/igor-setup's runtime-dir output) gives exact availability checks.
+  let runtimeSpec: RuntimeSpec | undefined;
+  const runtimeDir = input("runtime-dir");
+  if (runtimeDir) {
+    try {
+      runtimeSpec = loadRuntimeSpec(resolve(workspace, runtimeDir));
+      log(`Checking against GameMaker runtime ${runtimeSpec.version} (${runtimeSpec.functions.size} functions) from ${toPosix(relative(workspace, runtimeSpec.dir)) || "."}.`);
+    } catch (e) {
+      if (!(e instanceof RuntimeSpecError)) throw e;
+      warn(`${e.message} Using the bundled runtime data instead.`);
+    }
+  }
+
   let result;
   try {
     result = scan({
@@ -132,11 +147,16 @@ async function run(): Promise<void> {
       configPath: configInput ? resolve(workspace, configInput) : undefined,
       suite: suite || undefined,
       runtime: input("runtime") || undefined,
+      runtimeSpec,
       threatModels: threatModels.length ? threatModels : undefined,
     });
   } catch (e) {
     if (e instanceof ConfigError) return fail(e.message);
     throw e;
+  }
+  if (runtimeSpec && result.projects.length > 0 && !result.projects.some((p) => p.runtimeData === runtimeSpec?.version)) {
+    const line = runtimeSpec.version.split(".").slice(0, 2).join(".");
+    warn(`No project targets the ${line} release line, so the runtime in runtime-dir (${runtimeSpec.version}) wasn't used. Set runtime: ${runtimeSpec.version} to check against it anyway.`);
   }
   if (result.projects.length === 0) warn(`No GameMaker project (.yyp) or .gml files found under ${relative(workspace, root) || "."}. Set the "path" input to your project folder.`);
 

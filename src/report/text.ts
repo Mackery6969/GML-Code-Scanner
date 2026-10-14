@@ -56,7 +56,8 @@ export function formatText(result: ScanResult, options: TextOptions): string {
   }
   lines.push("");
   for (const p of result.projects) {
-    const rt = p.runtime ? `, runtime ${p.runtime}${p.runtimeChecks ? "" : " (no exact runtime data: availability checks off)"}` : "";
+    const data = !p.runtimeChecks ? " (no data for this release line, so availability checks are off; see runtime-dir)" : p.runtimeData !== p.runtime ? ` (checked against runtime ${p.runtimeData})` : "";
+    const rt = p.runtime ? `, runtime ${p.runtime}${data}` : "";
     lines.push(c("dim", `Project ${p.name}${p.yyp ? ` (${p.yyp})` : " (no .yyp)"}: ${p.files} GML files${rt}`));
   }
   const summary = `${total} problem${total === 1 ? "" : "s"} (${counts.error} error${counts.error === 1 ? "" : "s"}, ${counts.warning} warning${counts.warning === 1 ? "" : "s"}, ${counts.note} note${counts.note === 1 ? "" : "s"}) in ${result.filesScanned} files, ${result.rules.length} rules, ${(result.durationMs / 1000).toFixed(1)}s`;

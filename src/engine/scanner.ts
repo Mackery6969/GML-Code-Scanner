@@ -1,12 +1,13 @@
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { detectDependencies, detectRuntime, type DetectedDependency, type RuntimeTarget } from "../deps/detect.ts";
 import { BUILTIN_DEPENDENCIES } from "../deps/registry.ts";
 import type * as A from "../parser/ast.ts";
 import { walk } from "../parser/walk.ts";
 import { loadWorkspace, type GmlFile, type Project } from "../project/loader.ts";
 import type { SourceText } from "../project/source.ts";
-import { KNOWN_RUNTIMES } from "../semantic/builtins.ts";
+import { addRuntime, KNOWN_RUNTIMES } from "../semantic/builtins.ts";
 import { ProjectIndex } from "../semantic/project-index.ts";
+import type { RuntimeSpec } from "../semantic/runtime-spec.ts";
 import { ALL_RULES, SYNTAX_ERROR_RULE } from "../rules/index.ts";
 import { createPatternRules } from "../rules/patterns.ts";
 import { loadConfig, type ResolvedConfig, type ThreatModel } from "./config.ts";
@@ -27,6 +28,8 @@ export interface ScanOptions {
   onlyRules?: string[];
   /** Overrides the target runtime version. */
   runtime?: string;
+  /** An installed runtime (see loadRuntimeSpec) to check projects on its release line against. */
+  runtimeSpec?: RuntimeSpec;
   /** Overrides the config's threat models. */
   threatModels?: ThreatModel[];
 }
@@ -37,6 +40,8 @@ export interface ProjectSummary {
   files: number;
   runtime?: string;
   runtimeChecks: boolean;
+  /** The runtime version whose function data availability checks used. */
+  runtimeData?: string;
 }
 
 export interface InternalError {
@@ -107,7 +112,13 @@ export function scan(options: ScanOptions): ScanResult {
   const rules = [...ALL_RULES, SYNTAX_ERROR_RULE, ...createPatternRules(config.patterns)];
   const selected = selectRules(config, rules, options.onlyRules);
   const severityOf = new Map(selected.map((s) => [s.rule.meta.id, s.severity]));
-  const isIgnored = loadIgnoreMatcher(root, config.ignore);
+  if (options.runtimeSpec) addRuntime(options.runtimeSpec);
+  const ignored = loadIgnoreMatcher(root, config.ignore);
+  // A runtime installed inside the scanned folder (bscotch/igor-setup puts it in the workspace) isn't part of the game.
+  const runtimeRel = options.runtimeSpec ? relative(root, resolve(options.runtimeSpec.dir)).split(sep).join("/") : "";
+  const runtimeInside = runtimeRel !== "" && !runtimeRel.startsWith("..") && !isAbsolute(runtimeRel);
+  const inRuntime = (p: string) => runtimeInside && (p === runtimeRel || p.startsWith(runtimeRel + "/"));
+  const isIgnored = (p: string) => inRuntime(p) || ignored(p);
   const workspace = loadWorkspace(root, { isIgnored });
 
   const findings: Finding[] = [];
@@ -128,6 +139,7 @@ export function scan(options: ScanOptions): ScanResult {
       files: project.files.length,
       runtime: config.runtime ?? project.yyp?.ideVersion,
       runtimeChecks: index.runtimeIndex >= 0,
+      runtimeData: KNOWN_RUNTIMES[index.runtimeIndex],
     });
     filesScanned += project.files.length;
     dependencies.push(...detectDependencies(project, dependencySpecs));

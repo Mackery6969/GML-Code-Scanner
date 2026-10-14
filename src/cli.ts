@@ -11,6 +11,7 @@ import { formatText } from "./report/text.ts";
 import { toSarif } from "./report/sarif.ts";
 import { DEPENDENCY_RULES } from "./rules/dependencies.ts";
 import { ALL_RULES, SYNTAX_ERROR_RULE } from "./rules/index.ts";
+import { loadRuntimeSpec, RuntimeSpecError, type RuntimeSpec } from "./semantic/runtime-spec.ts";
 import { REPOSITORY_URL, TOOL_NAME, VERSION } from "./version.ts";
 
 const HELP = `${TOOL_NAME} ${VERSION}: static analysis for GameMaker (GML) projects
@@ -31,6 +32,8 @@ Analysis:
       --suite <name>        default | security-extended | security-and-quality | all
       --rule <id>           Only run this rule (repeatable)
       --runtime <version>   Target GameMaker runtime (default: from the .yyp IDEVersion)
+      --runtime-dir <dir>   Installed runtime to check against, e.g. C:/ProgramData/
+                            GameMakerStudio2/Cache/runtimes/runtime-2023.1.1.81
       --threat-model <m>    remote and/or local (repeatable; default: remote)
       --fail-on <level>     Exit with 1 when findings at this level exist:
                             error (default), warning, note, none
@@ -154,6 +157,7 @@ export async function main(argv: string[]): Promise<number> {
         suite: { type: "string" },
         rule: { type: "string", multiple: true },
         runtime: { type: "string" },
+        "runtime-dir": { type: "string" },
         "threat-model": { type: "string", multiple: true },
         "fail-on": { type: "string" },
         "check-updates": { type: "boolean" },
@@ -222,6 +226,17 @@ export async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
+  let runtimeSpec: RuntimeSpec | undefined;
+  if (o["runtime-dir"]) {
+    try {
+      runtimeSpec = loadRuntimeSpec(resolve(o["runtime-dir"]));
+    } catch (e) {
+      if (!(e instanceof RuntimeSpecError)) throw e;
+      process.stderr.write(`gmlscan: ${e.message}\n`);
+      return 2;
+    }
+  }
+
   let result: ScanResult;
   try {
     result = scan({
@@ -230,6 +245,7 @@ export async function main(argv: string[]): Promise<number> {
       suite: o.suite as Suite | undefined,
       onlyRules: o.rule,
       runtime: o.runtime,
+      runtimeSpec,
       threatModels: threats as ThreatModel[] | undefined,
     });
   } catch (e) {

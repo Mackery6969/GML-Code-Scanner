@@ -18,6 +18,9 @@ inputs:
   runtime:
     description: "Target GameMaker runtime version (e.g. 2023.1.1.81). Defaults to the IDEVersion in the .yyp."
     default: ""
+  runtime-dir:
+    description: "An installed GameMaker runtime folder, such as the runtime-dir output of bscotch/igor-setup. Projects on its release line are checked against its exact function list. Leave empty to use the bundled data."
+    default: ""
   upload:
     description: "Upload results to GitHub code scanning (Security tab): auto (upload, warn if unavailable), true (fail if the upload fails) or false."
     default: "auto"

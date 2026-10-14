@@ -104,6 +104,8 @@ Severity: error · Precision: very-high · Category: correctness
 
 The project targets a GameMaker runtime (read from `MetaData.IDEVersion` in the .yyp, or the `runtime` config option) in which this function does not exist. It was either added in a later release or removed.
 
+The check only runs when the scanner has function data for the project's release line: the bundled LTS 2022 and LTS 2026 data, or an installed runtime passed with `runtime-dir` (`--runtime-dir` on the command line).
+
 **How to fix:** upgrade the project's runtime, or use an alternative available in your runtime. If the target runtime is wrong, set `"runtime"` in `.gmlscan.json`.
 
 ## gml/wrong-argument-count

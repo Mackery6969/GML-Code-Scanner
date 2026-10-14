@@ -62,6 +62,7 @@ To put GML Code Scanner on your organization's **Actions → New workflow** page
 | `suite` | `default` | `default`, `security-extended`, `security-and-quality` or `all`. |
 | `threat-models` | `remote` | Untrusted data to track: `remote` (network/HTTP/Steam) and/or `local` (files, INI, clipboard, command line, `keyboard_string`). |
 | `runtime` | from `.yyp` | Target GameMaker runtime, e.g. `2023.1.1.81`. |
+| `runtime-dir` | | An installed runtime to check against, such as the `runtime-dir` output of `bscotch/igor-setup`. See [GameMaker runtime data](#gamemaker-runtime-data). |
 | `upload` | `auto` | Upload to code scanning: `auto` (warn if unavailable), `true` (fail if the upload fails), `false`. |
 | `token` | `github.token` | Token for the upload (needs `security-events: write`). |
 | `wait-for-processing` | `true` | Wait for GitHub to process the upload, report processing errors, and leave out findings whose alerts are dismissed. |
@@ -328,7 +329,47 @@ They complement each other: keep Feather or Stitch in your editor, and let this 
 
 ## GameMaker runtime data
 
-Built-in function signatures, deprecation flags and runtime availability are generated from GameMaker's own `GmlSpec.xml` and `fnames`. The bundled data covers the LTS 2022 and LTS 2026 runtimes. Availability checks (`gml/runtime-unavailable`) switch on when your project's runtime release line is in the data. To add another runtime (for example 2023.1), install it with the GameMaker IDE and regenerate:
+Built-in function signatures, deprecation flags and runtime availability come from GameMaker's own `GmlSpec.xml` and `fnames`. The bundled data covers the LTS 2022 and LTS 2026 runtimes. Availability checks (`gml/runtime-unavailable`) switch on when your project's runtime release line is in the data.
+
+### Checking against your exact runtime
+
+For any other runtime, such as 2023.1, point the scanner at an installed copy. Projects on that release line are then checked against its exact function list. On your own machine:
+
+```sh
+npx github:Mackery6969/GML-Code-Scanner#v2 . --runtime-dir "C:/ProgramData/GameMakerStudio2/Cache/runtimes/runtime-2023.1.1.81"
+```
+
+Downloading a runtime in GitHub Actions needs a GameMaker account, so let [bscotch/igor-setup](https://github.com/bscotch/igor-setup) do it with your account's access key (see *Building via Command Line* in the GameMaker manual). Save the key as a repository secret named `GAMEMAKER_ACCESS_KEY`, then:
+
+```yaml
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      # Pull requests from forks don't get secrets; they fall back to the bundled data.
+      HAS_GAMEMAKER_KEY: ${{ secrets.GAMEMAKER_ACCESS_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: bscotch/igor-setup@v3
+        id: igor
+        if: env.HAS_GAMEMAKER_KEY == 'true'
+        with:
+          target-yyp: MyGame/MyGame.yyp   # picks the runtime that matches the project's IDE version
+          access-key: ${{ secrets.GAMEMAKER_ACCESS_KEY }}
+          cache: true                     # older runtimes are several hundred MB
+      - uses: Mackery6969/GML-Code-Scanner@v2
+        with:
+          runtime-dir: ${{ steps.igor.outputs.runtime-dir }}
+```
+
+- The scanner never sees the access key: igor-setup uses it, and the scanner only reads `GmlSpec.xml` and `fnames` from the installed runtime.
+- If you already build with igor-setup and igor-build, pass that step's `runtime-dir` instead of setting up a second copy.
+- When the step is skipped, `runtime-dir` is empty and the bundled data is used.
+- A runtime on a different release line from the project (for example, building a 2023.1 project with 2024.2) isn't used unless you also set `runtime` to its version.
+
+### Updating the bundled data
+
+To add a runtime to the bundled data, install it with the GameMaker IDE and regenerate:
 
 ```sh
 npm run gen:builtins -- "C:/ProgramData/GameMakerStudio2/Cache/runtimes/runtime-2023.1.1.81" "C:/ProgramData/GameMakerStudio2-LTS2026/Cache/runtimes/runtime-2026.0.0.23" "C:/ProgramData/GameMakerStudio2-LTS/Cache/runtimes/runtime-2022.0.1.30"
