@@ -264,11 +264,10 @@ class TaintEngine {
   run(): TaintAnalysis {
     const units: Unit[] = [];
     for (const file of this.index.project.files) {
-      const owner = file.kind === "object-event" ? file.resource : undefined;
-      units.push({ file, body: file.ast.body, owner });
+      units.push({ file, body: file.ast.body, owner: ownerOf(file) });
     }
     for (const fn of this.index.functionsByNode.values()) {
-      units.push({ file: fn.file, body: fn.node.body.body, fn, owner: fn.file.kind === "object-event" ? fn.file.resource : undefined });
+      units.push({ file: fn.file, body: fn.node.body.body, fn, owner: ownerOf(fn.file) });
       this.summaries.set(fn.node, { paramToReturn: new Map(), paramToSink: new Map(), returnFacts: [] });
     }
     for (let pass = 0; pass < 8; pass++) {
@@ -690,8 +689,7 @@ class TaintEngine {
   }
 
   private evIndex(e: A.IndexExpression): Fact[] {
-    const idxFacts = e.indices.map((i) => this.ev(i));
-    void idxFacts;
+    for (const i of e.indices) this.ev(i);
     if (e.object.type === "Identifier") {
       const ref = this.scopes.refOf.get(e.object);
       if (e.object.name === "async_load" && ref?.binding.kind === "free") {
@@ -752,7 +750,7 @@ class TaintEngine {
     const mut = MUTATORS[name];
     if (mut && call.arguments[0]) {
       const idx = mut === "rest" ? call.arguments.map((_, i) => i).slice(1) : mut;
-      const facts = idx.reduce<Fact[]>((acc, i) => union(acc, args[i] ?? []), []);
+      const facts = unionArgs(args, idx);
       if (facts.length) this.assign(call.arguments[0], union(facts, args[0] ?? []), call);
     }
 
@@ -762,7 +760,7 @@ class TaintEngine {
     const p = PROPAGATORS[name];
     if (p) {
       const from = p.from === "all" ? args.map((_, i) => i) : p.from;
-      let facts = from.reduce<Fact[]>((acc, i) => union(acc, args[i] ?? []), []);
+      let facts = unionArgs(args, from);
       if (p.numeric) facts = facts.map(asNumeric);
       return this.extend(facts, call, `${name}(...)`);
     }
@@ -890,6 +888,16 @@ function union(a: Fact[], b: Fact[]): Fact[] {
     else if (f.path.length < out[i].path.length) out[i] = f;
   }
   return out;
+}
+
+/** Union of the facts of the argument positions in `indices`. */
+function unionArgs(args: Fact[][], indices: number[]): Fact[] {
+  return indices.reduce<Fact[]>((acc, i) => union(acc, args[i] ?? []), []);
+}
+
+/** The object whose instance variables `self` refers to in a file, if it is an object event. */
+function ownerOf(file: GmlFile): string | undefined {
+  return file.kind === "object-event" ? file.resource : undefined;
 }
 
 function intersect(a: Set<string>, b: Set<string>): Set<string> {
