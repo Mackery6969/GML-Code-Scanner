@@ -96,6 +96,8 @@ async function autoUpdateBase(token: string, repository: string): Promise<string
   return branch && process.env.GITHUB_REF === `refs/heads/${branch}` ? branch : undefined;
 }
 
+const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
 function fail(message: string): void {
   process.stdout.write(`::error::${escapeData(message)}\n`);
   process.exitCode = 1;
@@ -172,7 +174,7 @@ async function run(): Promise<void> {
       mergeUpdateFindings(result, updates);
       for (const e of updates.errors) warn(`Couldn't check for updates of ${e}`);
     } catch (e) {
-      warn(`The dependency update check failed: ${e instanceof Error ? e.message : String(e)}`);
+      warn(`The dependency update check failed: ${errorMessage(e)}`);
     }
   }
 
@@ -217,7 +219,7 @@ async function run(): Promise<void> {
       scoped = true;
       log(scopeNote());
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = errorMessage(e);
       warn(`Could not limit results to this pull request's changes (${msg.replace(/.$/, "")}). Reporting all findings instead.`);
     }
   }
@@ -285,7 +287,7 @@ async function run(): Promise<void> {
             log(dismissedNote);
           }
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
+          const msg = errorMessage(e);
           warn(`${msg} Findings with dismissed alerts are reported too.`);
         }
       }
