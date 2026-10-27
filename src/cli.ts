@@ -60,6 +60,8 @@ function writeOutputFile(file: string, content: string): void {
   writeFileSync(file, content);
 }
 
+const ruleAnchor = (id: string) => id.replace(/[^a-z0-9]+/gi, "").toLowerCase();
+
 function listRules(format: string): string {
   const rules = [...ALL_RULES, SYNTAX_ERROR_RULE, ...DEPENDENCY_RULES].map((r) => r.meta);
   if (format === "json") return JSON.stringify(rules, null, 2) + "\n";
@@ -75,10 +77,10 @@ function listRules(format: string): string {
     ];
     for (const m of rules) {
       const inSuites = suites.filter((s) => isRuleInSuite(m, s)).map((s) => `\`${s}\``).join(", ");
-      out.push(`| [\`${m.id}\`](#${m.id.replace(/[^a-z0-9]+/gi, "").toLowerCase()}) | ${m.severity} | ${m.category} | ${inSuites} |`);
+      out.push(`| [\`${m.id}\`](#${ruleAnchor(m.id)}) | ${m.severity} | ${m.category} | ${inSuites} |`);
     }
     for (const m of rules) {
-      out.push("", `## ${m.id}`, "", `<a id="${m.id.replace(/[^a-z0-9]+/gi, "").toLowerCase()}"></a>`, "", `**${m.short}**`, "");
+      out.push("", `## ${m.id}`, "", `<a id="${ruleAnchor(m.id)}"></a>`, "", `**${m.short}**`, "");
       const facts = [`Severity: ${m.severity}`, `Precision: ${m.precision}`, `Category: ${m.category}`];
       if (m.securitySeverity !== undefined) facts.push(`Security severity: ${m.securitySeverity.toFixed(1)}`);
       if (m.cwe?.length) facts.push(`CWE: ${m.cwe.map((c) => `[CWE-${c}](https://cwe.mitre.org/data/definitions/${c}.html)`).join(", ")}`);
