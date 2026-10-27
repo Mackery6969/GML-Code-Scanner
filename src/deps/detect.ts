@@ -92,6 +92,21 @@ export function detectDependencies(project: Project, specs: DependencySpec[]): D
   return [...detectExtensions(project, specs), ...detectLibraries(project, specs), ...detectGenerated(project, specs)];
 }
 
+/** The file names and function names an extension's .yy lists. */
+function listExtensionContents(yy: Record<string, unknown>): { functions: string[]; files: string[] } {
+  const functions: string[] = [];
+  const files: string[] = [];
+  for (const f of yyArray(yy.files)) {
+    const file = f as Record<string, unknown>;
+    if (typeof file.filename === "string" && file.filename) files.push(file.filename);
+    for (const fn of yyArray(file.functions)) {
+      const n = yyName(fn);
+      if (n) functions.push(n);
+    }
+  }
+  return { functions, files };
+}
+
 function detectExtensions(project: Project, specs: DependencySpec[]): DetectedDependency[] {
   const out: DetectedDependency[] = [];
   const seen = new Set<string>();
@@ -103,16 +118,7 @@ function detectExtensions(project: Project, specs: DependencySpec[]): DetectedDe
       if (text === undefined) continue;
       const yy = tryParseYy(text);
       if (!yy) continue;
-      const functions: string[] = [];
-      const files: string[] = [];
-      for (const f of yyArray(yy.files)) {
-        const file = f as Record<string, unknown>;
-        if (typeof file.filename === "string" && file.filename) files.push(file.filename);
-        for (const fn of yyArray(file.functions)) {
-          const n = yyName(fn);
-          if (n) functions.push(n);
-        }
-      }
+      const { functions, files } = listExtensionContents(yy);
       const extension: InstalledExtension = {
         name: r.name,
         yyRelPath: r.yyRelPath,
